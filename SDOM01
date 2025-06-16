@@ -1,0 +1,114 @@
+import numpy as np
+import pandas as pd
+import time
+import matplotlib.pyplot as plt
+from typing import Callable
+
+# Try importing cupy
+try:
+    import cupy as cp
+    HAS_CUPY = True
+except ImportError:
+    HAS_CUPY = False
+
+# Step 1: Generate CSV data
+def generate_csv(filename="data.csv", rows=1_000_000):
+    df = pd.DataFrame({
+        "value1": np.random.rand(rows),
+        "value2": np.random.rand(rows)
+    })
+    df.to_csv(filename, index=False)
+    return filename
+
+# Step 2: SDOM Engine
+class SDOMEngine:
+    def __init__(self):
+        self.memory_blocks = {}
+        self.disk_blocks = {}
+        self.operations = []
+
+    def load_memory(self, name: str, data: np.ndarray):
+        self.memory_blocks[name] = data
+
+    def load_disk(self, name: str, path: str, column: str):
+        self.disk_blocks[name] = (path, column)
+
+    def define_operation(self, output: str, func: Callable, inputs: list[str]):
+        self.operations.append((output, func, inputs))
+
+    def get_data(self, name: str):
+        if name in self.memory_blocks:
+            return self.memory_blocks[name]
+        elif name in self.disk_blocks:
+            path, column = self.disk_blocks[name]
+            df = pd.read_csv(path, usecols=[column])
+            return df[column].values
+        else:
+            raise ValueError(f"Unknown block '{name}'")
+
+    def compute(self):
+        for output, func, inputs in self.operations:
+            data_inputs = [self.get_data(name) for name in inputs]
+            result = func(*data_inputs)
+            self.memory_blocks[output] = result
+
+# Step 3: Benchmarking
+def benchmark_systems(csv_path):
+    results = {}
+
+    df = pd.read_csv(csv_path)
+    A = df['value1'].values
+    B = df['value2'].values
+
+    # --- CPU Benchmark ---
+    start = time.time()
+    C_cpu = A + B
+    cpu_time = time.time() - start
+    results['CPU'] = cpu_time
+
+    # --- SDOM Benchmark ---
+    sdom = SDOMEngine()
+    sdom.load_disk("A", csv_path, "value1")
+    sdom.load_disk("B", csv_path, "value2")
+    sdom.define_operation("C", lambda a, b: a + b, ["A", "B"])
+    start = time.time()
+    sdom.compute()
+    sdom_time = time.time() - start
+    results['SDOM'] = sdom_time
+
+    # --- GPU Benchmark (if cupy available) ---
+    if HAS_CUPY:
+        start = time.time()
+        A_gpu = cp.asarray(A)
+        B_gpu = cp.asarray(B)
+        C_gpu = A_gpu + B_gpu
+        cp.cuda.Device(0).synchronize()  # Wait for GPU to finish
+        gpu_time = time.time() - start
+        results['GPU'] = gpu_time
+    else:
+        results['GPU'] = None
+
+    return results
+
+# Step 4: Visualization
+def plot_results(results):
+    labels = [k for k in results.keys() if results[k] is not None]
+    times = [results[k] for k in labels]
+
+    plt.figure(figsize=(8, 5))
+    bars = plt.bar(labels, times, color=["#1f77b4", "#2ca02c", "#ff7f0e"])
+    plt.ylabel("Time (seconds)")
+    plt.title("SDOM vs GPU vs CPU Performance")
+    plt.grid(True, axis='y', linestyle='--', alpha=0.6)
+
+    for bar, time_val in zip(bars, times):
+        plt.text(bar.get_x() + bar.get_width()/2, bar.get_height(), f"{time_val:.3f}s",
+                 ha='center', va='bottom')
+
+    plt.tight_layout()
+    plt.show()
+
+# Step 5: Run everything
+csv_file = generate_csv()
+results = benchmark_systems(csv_file)
+plot_results(results)

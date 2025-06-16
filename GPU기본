@@ -1,0 +1,255 @@
+# GPU 전체 통합 모델 + 정규화 진폭 기반 메모리 모델 포함 (MemoryError 방지 및 연산 기반 메모리)
+
+import numpy as np
+
+# =====================================
+# 재료 모델
+# =====================================
+class Material:
+    def __init__(self, name, conductivity, melting_point, mobility):
+        self.name = name
+        self.conductivity = conductivity
+        self.melting_point = melting_point
+        self.mobility = mobility
+
+# =====================================
+# 트랜지스터 모델
+# =====================================
+class Transistor:
+    def __init__(self, material: Material, type_='NMOS'):
+        self.material = material
+        self.type = type_
+        self.state = False
+
+    def switch(self, gate_voltage):
+        threshold = 1.0
+        self.state = gate_voltage > threshold
+        return self.state
+
+# =====================================
+# 논리 게이트 모델
+# =====================================
+class LogicGate:
+    def __init__(self, type_):
+        self.type = type_
+
+    def compute(self, a, b=None):
+        if self.type == 'AND': return a and b
+        if self.type == 'OR': return a or b
+        if self.type == 'NOT': return not a
+        if self.type == 'XOR': return a != b
+
+# =====================================
+# ALU
+# =====================================
+class ALU:
+    def execute(self, opcode, a, b):
+        if opcode == 'ADD': return a + b
+        if opcode == 'SUB': return a - b
+        if opcode == 'MUL': return a * b
+        if opcode == 'DIV': return a / b if b != 0 else 0
+        if opcode == 'AND': return a & b
+        if opcode == 'OR': return a | b
+
+# =====================================
+# 명령어
+# =====================================
+class Instruction:
+    def __init__(self, opcode, operand1, operand2):
+        self.opcode = opcode
+        self.operand1 = operand1
+        self.operand2 = operand2
+
+# =====================================
+# CUDA Core
+# =====================================
+class CudaCore:
+    def __init__(self, id_):
+        self.id = id_
+        self.alu = ALU()
+        self.registers = [0] * 16
+
+    def run(self, instruction):
+        result = self.alu.execute(instruction.opcode, instruction.operand1, instruction.operand2)
+        self.registers[0] = result
+        return result
+
+# =====================================
+# Warp Scheduler
+# =====================================
+class WarpScheduler:
+    def __init__(self):
+        self.queue = []
+
+    def schedule(self, warps):
+        self.queue.extend(warps)
+        return self.queue.pop(0) if self.queue else None
+
+# =====================================
+# SM (Streaming Multiprocessor)
+# =====================================
+class StreamingMultiprocessor:
+    def __init__(self, id_, num_cores):
+        self.id = id_
+        self.cores = [CudaCore(i) for i in range(num_cores)]
+        self.scheduler = WarpScheduler()
+
+    def execute_warp(self, warp_instructions):
+        results = []
+        for core, inst in zip(self.cores, warp_instructions):
+            results.append(core.run(inst))
+        return results
+
+# =====================================
+# 캐시
+# =====================================
+class Cache:
+    def __init__(self, size_kb):
+        self.size = size_kb * 1024
+        self.storage = {}
+
+# =====================================
+# 정규화된 진폭 기반 메모리
+# =====================================
+def normalization_constant(n):
+    return np.sqrt(n * (n + 1) * (2 * n + 1) / 6)
+
+def quantum_amplitude(i, norm):
+    return i / norm
+
+class QuantumMemory:
+    def __init__(self, N):
+        self.N = N
+        self.norm = normalization_constant(N)
+
+    def get_amplitude(self, index):
+        return quantum_amplitude(index, self.norm)
+
+# =====================================
+# 메모리 모델 (기존 방식)
+# =====================================
+class Memory:
+    def __init__(self, size_bytes):
+        self.data = np.zeros(size_bytes, dtype=np.uint8)
+
+# =====================================
+# 클럭, 전력, 온도 모델
+# =====================================
+class Clock:
+    def __init__(self, frequency_ghz):
+        self.frequency_ghz = frequency_ghz
+        self.cycle = 0
+
+    def tick(self):
+        self.cycle += 1
+
+class PowerModel:
+    def __init__(self, voltage, current):
+        self.voltage = voltage
+        self.current = current
+
+    def power_consumption(self):
+        return self.voltage * self.current
+
+class ThermalModel:
+    def __init__(self, material):
+        self.temperature = 25
+        self.material = material
+
+    def dissipate(self, power):
+        self.temperature += power * 0.01
+
+# =====================================
+# GPU
+# =====================================
+class GPU:
+    def __init__(self, num_sms=1, cores_per_sm=4):
+        self.sms = [StreamingMultiprocessor(i, cores_per_sm) for i in range(num_sms)]
+        self.memory = Memory(100 * 1024 * 1024)  # 100MB
+        self.clock = Clock(1.0)
+        self.power = PowerModel(1.1, 2.5)
+        self.thermal = ThermalModel(Material("Copper", 5.96e7, 1085, 850))
+
+    def load_instructions(self, warps):
+        results = []
+        for i, warp in enumerate(warps):
+            sm = self.sms[i % len(self.sms)]
+            res = sm.execute_warp(warp)
+            results.append(res)
+            self.clock.tick()
+            self.thermal.dissipate(self.power.power_consumption())
+        return results
+
+# =====================================
+# A100 GPU
+# =====================================
+class A100GPU(GPU):
+    def __init__(self):
+        super().__init__(num_sms=108, cores_per_sm=64)
+        self.name = "NVIDIA A100"
+        self.architecture = "Ampere"
+        self.l2_cache = Cache(40 * 1024)  # 40MB
+        self.memory = Memory(100 * 1024 * 1024)  # 100MB 로 축소
+        self.quantum_memory = QuantumMemory(1_000_000)
+        self.clock = Clock(1.4)
+        self.power = PowerModel(1.15, 350 / 1.15)
+        self.thermal = ThermalModel(Material("Copper", 5.96e7, 1085, 850))
+        self.tensor_cores_per_sm = 4
+
+    def describe(self):
+        return {
+            "Name": self.name,
+            "SMs": len(self.sms),
+            "Cores per SM": len(self.sms[0].cores),
+            "Total CUDA Cores": len(self.sms) * len(self.sms[0].cores),
+            "L2 Cache (MB)": self.l2_cache.size / 1024 / 1024,
+            "Memory (MB)": len(self.memory.data) / 1024 / 1024,
+            "Clock (GHz)": self.clock.frequency_ghz,
+            "Power (W)": self.power.power_consumption(),
+            "Quantum Mem Amplitude (1,500k,1M)": (
+                self.quantum_memory.get_amplitude(1),
+                self.quantum_memory.get_amplitude(500_000),
+                self.quantum_memory.get_amplitude(1_000_000))
+        }
+
+# =====================================
+# 테스트 실행
+# =====================================
+if __name__ == '__main__':
+    gpu = A100GPU()
+
+    # 행렬 A와 B 정의
+    A = [
+        [1, 2, 3, 4],
+        [5, 6, 7, 8],
+        [9, 10, 11, 12],
+        [13, 14, 15, 16]
+    ]
+
+    B = [
+        [16, 15, 14, 13],
+        [12, 11, 10, 9],
+        [8, 7, 6, 5],
+        [4, 3, 2, 1]
+    ]
+
+    # 행렬 덧셈을 위한 워프 구성
+    warps = []
+    for row in range(4):
+        warp = []
+        for col in range(4):
+            op1 = A[row][col]
+            op2 = B[row][col]
+            warp.append(Instruction("ADD", op1, op2))
+        warps.append(warp)
+
+    # GPU로 실행
+    result = gpu.load_instructions(warps)
+
+    print("=== Matrix Addition Result (C = A + B) ===")
+    for row in result:
+        print(row)
+
+    print("\n=== GPU Info ===")
+    for key, value in gpu.describe().items():
+        print(f"{key}: {value}")

@@ -96,4 +96,152 @@ print("C =", sdom.get_result('C'))
 
 
 
+import numpy as np
+import pandas as pd
+from typing import Callable, Dict
+import math
+
+# ─────────────────────────────────────────────────────
+# MemoryBlock: 메모리 기반 블록
+class MemoryBlock:
+    def __init__(self, name: str, data: np.ndarray):
+        self.name = name
+        self.data = data
+
+# DiskBlock: CSV 컬럼을 연산 블록으로 사용하는 블록
+class DiskBlock:
+    def __init__(self, name: str, path: str, column: str = None):
+        self.name = name
+        self.path = path
+        self.column = column
+
+    def load(self) -> np.ndarray:
+        df = pd.read_csv(self.path)
+        if self.column:
+            return df[self.column].values
+        return df.values
+
+# Operation: 연산 정의
+class Operation:
+    def __init__(self, output: str, func: Callable, inputs: list):
+        self.output = output
+        self.func = func
+        self.inputs = inputs
+
+# ─────────────────────────────────────────────────────
+# SDOM 계산기: 메모리 + 디스크 연산을 통합 지원
+class SDOMCalculator:
+    def __init__(self):
+        self.mem_blocks: Dict[str, MemoryBlock] = {}
+        self.disk_blocks: Dict[str, DiskBlock] = {}
+        self.operations: list[Operation] = []
+
+    def load_memory(self, name: str, data: list):
+        self.mem_blocks[name] = MemoryBlock(name, np.array(data))
+
+    def load_disk(self, name: str, path: str, column: str = None):
+        self.disk_blocks[name] = DiskBlock(name, path, column)
+
+    def define_operation(self, output: str, func: Callable, inputs: list):
+        self.operations.append(Operation(output, func, inputs))
+
+    def get_data(self, name: str):
+        if name in self.mem_blocks:
+            return self.mem_blocks[name].data
+        elif name in self.disk_blocks:
+            return self.disk_blocks[name].load()
+        else:
+            raise ValueError(f"❌ 블록 '{name}' 없음")
+
+    def compute(self):
+        for op in self.operations:
+            input_data = [self.get_data(name) for name in op.inputs]
+            result = op.func(*input_data)
+            self.mem_blocks[op.output] = MemoryBlock(op.output, result)
+
+    def get_result(self, name: str):
+        return self.get_data(name)
+
+    def list_blocks(self):
+        return list(self.mem_blocks.keys()) + list(self.disk_blocks.keys())
+
+    def clear_operations(self):
+        self.operations = []
+
+
+
+def run_calculator():
+    calc = SDOMCalculator()
+    print("\n🧠 SDOM 계산기 시작: 메모리 + 디스크 연산 지원 (종료하려면 'exit')\n")
+
+    while True:
+        cmd = input("명령 (load, load_disk, op, run, show, list, clear, exit): ").strip()
+
+        if cmd == "exit":
+            print("👋 종료합니다.")
+            break
+
+        elif cmd == "load":
+            name = input("블록 이름: ")
+            values = input("데이터 (쉼표로 구분): ")
+            data = [float(x) for x in values.split(',')]
+            calc.load_memory(name, data)
+            print(f"✅ 메모리 블록 '{name}' 로딩 완료.")
+
+        elif cmd == "load_disk":
+            name = input("블록 이름: ")
+            path = input("CSV 경로: ")
+            column = input("컬럼 이름 (전체는 빈칸): ").strip()
+            column = column if column else None
+            calc.load_disk(name, path, column)
+            print(f"✅ 디스크 블록 '{name}' → 파일 '{path}' 컬럼 '{column}' 로딩 완료.")
+
+        elif cmd == "op":
+            output = input("출력 블록 이름: ")
+            expr = input("수식 (예: A + B, A * np.sin(B)): ")
+
+            # 연산에 사용된 블록 이름 추출
+            inputs = []
+            for token in expr.replace('(', ' ').replace(')', ' ').replace('*', ' ')\
+                             .replace('+', ' ').replace('-', ' ').replace('/', ' ').split():
+                if token.isalpha() and token in calc.list_blocks():
+                    inputs.append(token)
+
+            def safe_func(*args, expr=expr, inputs=inputs):
+                local_vars = {name: arg for name, arg in zip(inputs, args)}
+                local_vars['np'] = np
+                local_vars['math'] = math
+                return eval(expr, {"__builtins__": {}}, local_vars)
+
+            calc.define_operation(output, safe_func, inputs)
+            print(f"🧮 연산 '{expr}' → '{output}' 정의 완료.")
+
+        elif cmd == "run":
+            calc.compute()
+            print("🚀 연산 수행 완료.")
+
+        elif cmd == "show":
+            name = input("출력할 블록 이름: ")
+            try:
+                print(f"📤 블록 '{name}':", calc.get_result(name))
+            except Exception as e:
+                print("❌ 오류:", e)
+
+        elif cmd == "list":
+            print("📦 사용 가능한 블록 목록:", calc.list_blocks())
+
+        elif cmd == "clear":
+            calc.clear_operations()
+            print("🧹 연산 초기화 완료.")
+
+        else:
+            print("❓ 알 수 없는 명령입니다.")
+
+if __name__ == "__main__":
+    run_calculator()
+
+
+
+
+
 

@@ -1,0 +1,149 @@
+# === Logic Layer (Transistors & Gates) ===
+class LogicGate:
+    def __init__(self, gate_type):
+        self.gate_type = gate_type
+
+    def compute(self, a, b=None):
+        if self.gate_type == 'AND':
+            return a & b
+        elif self.gate_type == 'OR':
+            return a | b
+        elif self.gate_type == 'NOT':
+            return ~a
+        elif self.gate_type == 'XOR':
+            return a ^ b
+        else:
+            raise ValueError("Unknown gate type")
+
+
+# === Arithmetic Logic Unit (ALU) ===
+class ALU:
+    def __init__(self):
+        self.and_gate = LogicGate('AND')
+        self.or_gate = LogicGate('OR')
+        self.xor_gate = LogicGate('XOR')
+
+    def add(self, a, b):
+        return a + b
+
+    def sub(self, a, b):
+        return a - b
+
+    def mul(self, a, b):
+        return a * b
+
+    def bitwise_and(self, a, b):
+        return self.and_gate.compute(a, b)
+
+    def bitwise_or(self, a, b):
+        return self.or_gate.compute(a, b)
+
+
+# === Instruction Representation ===
+class Instruction:
+    def __init__(self, op, arg1, arg2):
+        self.op = op
+        self.arg1 = arg1
+        self.arg2 = arg2
+
+
+# === CUDA Core ===
+class CudaCore:
+    def __init__(self, core_id):
+        self.core_id = core_id
+        self.alu = ALU()
+        self.registers = [0] * 32
+
+    def execute(self, instr: Instruction):
+        if instr.op == 'ADD':
+            result = self.alu.add(instr.arg1, instr.arg2)
+        elif instr.op == 'SUB':
+            result = self.alu.sub(instr.arg1, instr.arg2)
+        elif instr.op == 'MUL':
+            result = self.alu.mul(instr.arg1, instr.arg2)
+        elif instr.op == 'AND':
+            result = self.alu.bitwise_and(instr.arg1, instr.arg2)
+        elif instr.op == 'OR':
+            result = self.alu.bitwise_or(instr.arg1, instr.arg2)
+        else:
+            raise ValueError("Unknown operation")
+        self.registers[0] = result
+        return result
+
+
+# === Streaming Multiprocessor (SM) ===
+class StreamingMultiprocessor:
+    def __init__(self, sm_id, num_cores):
+        self.sm_id = sm_id
+        self.cores = [CudaCore(i) for i in range(num_cores)]
+
+    def dispatch(self, instructions: list):
+        results = []
+        for i, instr in enumerate(instructions):
+            core = self.cores[i % len(self.cores)]
+            result = core.execute(instr)
+            results.append(result)
+        return results
+
+
+# === Warp Scheduler ===
+class WarpScheduler:
+    def __init__(self):
+        pass
+
+    def schedule(self, warps: list, sm: StreamingMultiprocessor):
+        all_results = []
+        for warp in warps:
+            results = sm.dispatch(warp)
+            all_results.append(results)
+        return all_results
+
+
+# === GigaThread Engine ===
+class GigaThreadEngine:
+    def __init__(self, sms):
+        self.sms = sms
+        self.scheduler = WarpScheduler()
+
+    def execute(self, warps: list):
+        all_results = []
+        for i, warp in enumerate(warps):
+            sm = self.sms[i % len(self.sms)]
+            result = self.scheduler.schedule([warp], sm)
+            all_results.extend(result)
+        return all_results
+
+
+# === Memory Hierarchy ===
+class Memory:
+    def __init__(self, size):
+        self.data = [0] * size
+
+    def read(self, index):
+        return self.data[index]
+
+    def write(self, index, value):
+        self.data[index] = value
+
+
+# === GPU Top-Level ===
+class GPU:
+    def __init__(self, num_sms=4, cores_per_sm=8):
+        self.memory = Memory(1024)
+        self.sms = [StreamingMultiprocessor(i, cores_per_sm) for i in range(num_sms)]
+        self.engine = GigaThreadEngine(self.sms)
+
+    def load_instructions(self, instruction_blocks: list):
+        return self.engine.execute(instruction_blocks)
+
+
+# === Example Test ===
+if __name__ == '__main__':
+    gpu = GPU(num_sms=2, cores_per_sm=4)
+
+    # Define warp instructions (32 threads per warp simulated with 4 for simplicity)
+    warp1 = [Instruction('ADD', i, i) for i in range(4)]
+    warp2 = [Instruction('MUL', i, 2) for i in range(4)]
+
+    result = gpu.load_instructions([warp1, warp2])
+    print("GPU Execution Result:", result)

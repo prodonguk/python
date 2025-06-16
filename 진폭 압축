@@ -1,0 +1,29 @@
+from fractions import Fraction
+
+def binary_to_amplitude(binary_str):
+    """비트들을 중첩시켜 하나의 진폭(Fraction)으로 압축"""
+    amplitude = Fraction(0)
+    for i, bit in enumerate(binary_str):
+        if bit == '1':
+            amplitude += Fraction(1, 2**(i + 1))  # 중첩
+    return amplitude, len(binary_str)
+
+def amplitude_to_binary(amplitude, length):
+    """하나의 진폭에서 원래 이진수 복원"""
+    binary_str = ''
+    for _ in range(length):
+        amplitude *= 2
+        if amplitude >= 1:
+            binary_str += '1'
+            amplitude -= 1
+        else:
+            binary_str += '0'
+    return binary_str
+
+original = '1010011101010101010111111111100000101010101010101111'
+amp, bit_length = binary_to_amplitude(original)
+print("압축된 진폭 (중첩):", float(amp)) 
+
+restored = amplitude_to_binary(amp, bit_length)
+print("복원된 이진수:", restored)
+print("복원 성공 여부:", restored == original)

@@ -1,0 +1,49 @@
+import numpy as np
+from typing import Callable, Dict
+
+class MemoryBlock:
+    def __init__(self, name: str, data: np.ndarray):
+        self.name = name
+        self.data = data
+
+class Operation:
+    def __init__(self, output: str, func: Callable, inputs: list):
+        self.output = output
+        self.func = func
+        self.inputs = inputs  # list of input block names
+
+class SDOM:
+    def __init__(self):
+        self.blocks: Dict[str, MemoryBlock] = {}
+        self.operations: list[Operation] = []
+
+    def load_data(self, name: str, data: list):
+        self.blocks[name] = MemoryBlock(name, np.array(data))
+
+    def define_operation(self, output: str, func: Callable, inputs: list):
+        self.operations.append(Operation(output, func, inputs))
+
+    def compute(self):
+        for op in self.operations:
+            input_data = [self.blocks[name].data for name in op.inputs]
+            result = op.func(*input_data)
+            self.blocks[op.output] = MemoryBlock(op.output, result)
+
+    def get_data(self, name: str):
+        return self.blocks[name].data
+
+# SDOM 시스템 초기화
+sdom = SDOM()
+
+# 데이터 로딩
+sdom.load_data('A', [1, 2, 3, 4])
+sdom.load_data('B', [10, 20, 30, 40])
+
+# 연산 정의: C = A + B
+sdom.define_operation('C', lambda a, b: a + b, ['A', 'B'])
+
+# 연산 수행
+sdom.compute()
+
+# 결과 출력
+print("C =", sdom.get_data('C'))

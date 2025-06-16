@@ -1,0 +1,38 @@
+class A100GPU(GPU):
+    def __init__(self):
+        super().__init__(num_sms=108, cores_per_sm=64)  # 64 CUDA cores per SM
+        self.name = "NVIDIA A100"
+        self.architecture = "Ampere"
+        self.l2_cache = Cache(40 * 1024)  # 40MB L2 Cache
+        self.memory = Memory(40 * 1024 * 1024 * 1024)  # 40GB HBM2e
+        self.clock = Clock(1.4)  # ~1.4 GHz
+        self.power = PowerModel(1.15, 350 / 1.15)  # ~400W typical
+        self.thermal = ThermalModel(Material("Copper", 5.96e7, 1085, 850))
+
+        # Tensor core model (simplified placeholder)
+        self.tensor_cores_per_sm = 4
+
+    def describe(self):
+        return {
+            "Name": self.name,
+            "SMs": len(self.sms),
+            "Cores per SM": len(self.sms[0].cores),
+            "Total CUDA Cores": len(self.sms) * len(self.sms[0].cores),
+            "L2 Cache (MB)": self.l2_cache.size / 1024 / 1024,
+            "Memory (GB)": len(self.memory.data) / 1024**3,
+            "Clock (GHz)": self.clock.frequency_ghz,
+            "Power (W)": self.power.power_consumption()
+        }
+if __name__ == '__main__':
+    a100 = A100GPU()
+
+    # 워프 정의
+    warp1 = [Instruction('ADD', i, i + 1) for i in range(4)]
+    warp2 = [Instruction('MUL', i, 2) for i in range(4)]
+
+    result = a100.load_instructions([warp1, warp2])
+
+    print("=== A100 Simulation Result ===")
+    print(result)
+    print("=== GPU Info ===")
+    print(a100.describe())

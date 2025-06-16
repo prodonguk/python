@@ -1,0 +1,99 @@
+import numpy as np
+import pandas as pd
+from typing import Callable, Dict
+
+# ──────────────────────────────────────────────
+# MemoryBlock 클래스: 일반 메모리 블록
+class MemoryBlock:
+    def __init__(self, name: str, data: np.ndarray):
+        self.name = name
+        self.data = data
+
+# DiskBlock 클래스: 디스크 파일 기반 블록 (CSV 대상)
+class DiskBlock:
+    def __init__(self, name: str, path: str, column: str = None):
+        self.name = name
+        self.path = path  # 예: CSV 파일 경로
+        self.column = column  # 특정 컬럼만 연산 대상으로 지정
+
+    def load(self) -> np.ndarray:
+        df = pd.read_csv(self.path)
+        if self.column:
+            return df[self.column].values
+        return df.values  # 전체 데이터를 ndarray로 반환
+
+# Operation 클래스: 출력 블록, 함수, 입력 블록 리스트 포함
+class Operation:
+    def __init__(self, output: str, func: Callable, inputs: list):
+        self.output = output
+        self.func = func
+        self.inputs = inputs  # input block names
+
+# SDOM 클래스: 전체 연산 시스템
+class SDOM:
+    def __init__(self):
+        self.mem_blocks: Dict[str, MemoryBlock] = {}
+        self.disk_blocks: Dict[str, DiskBlock] = {}
+        self.operations: list[Operation] = []
+
+    # 메모리 블록 로딩
+    def load_data(self, name: str, data: list):
+        self.mem_blocks[name] = MemoryBlock(name, np.array(data))
+
+    # 디스크 블록 로딩
+    def load_disk_block(self, name: str, path: str, column: str = None):
+        self.disk_blocks[name] = DiskBlock(name, path, column)
+
+    # 연산 정의
+    def define_operation(self, output: str, func: Callable, inputs: list):
+        self.operations.append(Operation(output, func, inputs))
+
+    # 데이터 불러오기 (메모리 또는 디스크)
+    def get_data(self, name: str):
+        if name in self.mem_blocks:
+            return self.mem_blocks[name].data
+        elif name in self.disk_blocks:
+            return self.disk_blocks[name].load()
+        else:
+            raise ValueError(f"Block '{name}' not found.")
+
+    # 연산 수행
+    def compute(self):
+        for op in self.operations:
+            input_data = [self.get_data(name) for name in op.inputs]
+            result = op.func(*input_data)
+            self.mem_blocks[op.output] = MemoryBlock(op.output, result)
+
+    # 결과 반환
+    def get_result(self, name: str):
+        return self.get_data(name)
+
+import pandas as pd
+
+# 예제 CSV 파일 생성
+df = pd.DataFrame({
+    'value1': [1, 2, 3, 4],
+    'value2': [10, 20, 30, 40]
+})
+df.to_csv('data.csv', index=False)
+
+
+# SDOM 시스템 초기화
+sdom = SDOM()
+
+# 디스크에 있는 CSV 컬럼 불러오기
+sdom.load_disk_block('A', 'data.csv', column='value1')
+sdom.load_disk_block('B', 'data.csv', column='value2')
+
+# 연산 정의: C = A + B
+sdom.define_operation('C', lambda a, b: a + b, ['A', 'B'])
+
+# 연산 수행
+sdom.compute()
+
+# 결과 출력
+print("C =", sdom.get_result('C'))
+
+
+
+
